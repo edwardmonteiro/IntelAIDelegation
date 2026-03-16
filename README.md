@@ -1,0 +1,2 @@
+# IntelAIDelegation
+Inteligente AI Delegation 
