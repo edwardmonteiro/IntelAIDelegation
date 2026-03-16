@@ -1,61 +1,36 @@
 """Protocol for the Trust and Reputation system.
 
-Agent performance history is recorded on an immutable ledger. Trust scores
-are dynamic and influence future task assignments. The system supports
-both quantitative metrics and qualitative reviews.
+Agent performance history is recorded as immutable LedgerTransactions.
+Trust scores are dynamic and derived from the full portfolio of
+multi-dimensional records (quality, transparency, safety). The ledger
+is append-only and should be synced to a blockchain backend for
+tamper-proof guarantees.
 """
 
 from __future__ import annotations
 
-import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
 
-
-@dataclass
-class ReputationRecord:
-    """An immutable record of an agent's performance on a task.
-
-    Attributes:
-        record_id: Unique identifier.
-        agent_id: The agent being evaluated.
-        task_id: The task that was performed.
-        contract_id: The governing contract.
-        outcome: Whether the task succeeded, failed, or was breached.
-        quality_score: Quality metric in [0, 1].
-        timeliness_score: Whether deadlines were met, in [0, 1].
-        cost_efficiency: Actual vs. proposed cost ratio.
-        reviewer_id: Who submitted this record (delegator or third party).
-        notes: Free-form review notes.
-        recorded_at: When this record was created.
-        metadata: Extensible data.
-    """
-
-    agent_id: str
-    task_id: str
-    outcome: str
-    contract_id: str = ""
-    quality_score: float = 1.0
-    timeliness_score: float = 1.0
-    cost_efficiency: float = 1.0
-    reviewer_id: str = ""
-    notes: str = ""
-    record_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    recorded_at: datetime = field(default_factory=datetime.utcnow)
-    metadata: dict[str, Any] = field(default_factory=dict)
+from intel_ai_delegation.models.credential import VerifiableCredential
+from intel_ai_delegation.models.ledger import LedgerTransaction
 
 
 @dataclass
 class TrustScore:
     """Aggregated trust metrics for an agent.
 
+    Derived from the agent's full history of LedgerTransactions
+    and their portfolio of VerifiableCredentials.
+
     Attributes:
-        agent_id: The agent.
+        agent_id: The agent (DID).
         overall: Composite trust score in [0, 1].
-        reliability: Track record of completing tasks.
+        reliability: Track record of completing tasks successfully.
         quality: Average quality of delivered work.
+        transparency: Average clarity of reasoning traces.
+        safety: Average compliance with safety protocols.
         timeliness: Track record of meeting deadlines.
         total_tasks: Number of tasks in the history.
         updated_at: When this score was last computed.
@@ -65,6 +40,8 @@ class TrustScore:
     overall: float = 0.5
     reliability: float = 0.5
     quality: float = 0.5
+    transparency: float = 0.5
+    safety: float = 0.5
     timeliness: float = 0.5
     total_tasks: int = 0
     updated_at: datetime = field(default_factory=datetime.utcnow)
@@ -74,17 +51,15 @@ class TrustLedger(ABC):
     """Abstract base for the trust and reputation ledger.
 
     The ledger is append-only (immutable). Trust scores are computed
-    from the full history of reputation records.
+    from the full history of ledger transactions and verifiable credentials.
     """
 
     @abstractmethod
-    async def record(self, record: ReputationRecord) -> None:
-        """Append a reputation record to the ledger.
-
-        Records are immutable once written.
+    async def record_transaction(self, transaction: LedgerTransaction) -> None:
+        """Append a ledger transaction (immutable once written).
 
         Args:
-            record: The performance record to store.
+            transaction: The performance record to store.
         """
         ...
 
@@ -93,10 +68,10 @@ class TrustLedger(ABC):
         """Compute the current trust score for an agent.
 
         The score is derived from the agent's full history of
-        reputation records on the ledger.
+        ledger transactions and verifiable credentials.
 
         Args:
-            agent_id: The agent to evaluate.
+            agent_id: The agent to evaluate (DID).
 
         Returns:
             The computed trust score.
@@ -104,32 +79,70 @@ class TrustLedger(ABC):
         ...
 
     @abstractmethod
-    async def get_history(
+    async def get_transaction_history(
         self, agent_id: str, limit: int = 100
-    ) -> list[ReputationRecord]:
-        """Retrieve an agent's reputation history.
+    ) -> list[LedgerTransaction]:
+        """Retrieve an agent's ledger transaction history.
 
         Args:
-            agent_id: The agent to query.
+            agent_id: The agent to query (DID).
             limit: Maximum number of records to return.
 
         Returns:
-            List of records, most recent first.
+            List of transactions, most recent first.
         """
         ...
 
     @abstractmethod
-    async def get_record(self, record_id: str) -> ReputationRecord:
-        """Retrieve a specific reputation record.
+    async def get_transaction(self, transaction_id: str) -> LedgerTransaction:
+        """Retrieve a specific ledger transaction.
 
         Args:
-            record_id: The record to retrieve.
+            transaction_id: The transaction to retrieve.
 
         Returns:
-            The reputation record.
+            The ledger transaction.
 
         Raises:
             LedgerError: If not found.
+        """
+        ...
+
+    @abstractmethod
+    async def issue_credential(
+        self, credential: VerifiableCredential
+    ) -> VerifiableCredential:
+        """Issue a verifiable credential to an agent.
+
+        Args:
+            credential: The credential to issue.
+
+        Returns:
+            The credential with its hash populated.
+        """
+        ...
+
+    @abstractmethod
+    async def get_credentials(
+        self, agent_id: str, skill_domain: str | None = None
+    ) -> list[VerifiableCredential]:
+        """Retrieve an agent's verifiable credentials.
+
+        Args:
+            agent_id: The agent to query (DID).
+            skill_domain: Optional filter by skill domain.
+
+        Returns:
+            List of valid (non-revoked, non-expired) credentials.
+        """
+        ...
+
+    @abstractmethod
+    async def revoke_credential(self, credential_id: str) -> None:
+        """Revoke a previously issued credential.
+
+        Args:
+            credential_id: The credential to revoke.
         """
         ...
 

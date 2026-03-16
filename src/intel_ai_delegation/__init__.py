@@ -17,16 +17,24 @@ Core concepts:
 
 __version__ = "0.1.0"
 
-from intel_ai_delegation.models.task import Task, TaskStatus, TaskPriority
-from intel_ai_delegation.models.agent import Agent, AgentCapability
-from intel_ai_delegation.models.contract import Contract, ContractStatus
+from intel_ai_delegation.models.agent import Agent, AgentCapability, AgentType
+from intel_ai_delegation.models.contract import Contract, ContractStatus, VerificationMethod
+from intel_ai_delegation.models.credential import VerifiableCredential
+from intel_ai_delegation.models.ledger import CompletionStatus, LedgerTransaction
+from intel_ai_delegation.models.task import Task, TaskCriticality, TaskPriority, TaskStatus
 
 __all__ = [
-    "Task",
-    "TaskStatus",
-    "TaskPriority",
     "Agent",
     "AgentCapability",
+    "AgentType",
+    "CompletionStatus",
     "Contract",
     "ContractStatus",
+    "LedgerTransaction",
+    "Task",
+    "TaskCriticality",
+    "TaskPriority",
+    "TaskStatus",
+    "VerifiableCredential",
+    "VerificationMethod",
 ]

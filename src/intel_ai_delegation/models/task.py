@@ -15,18 +15,36 @@ from typing import Any
 
 
 class TaskStatus(Enum):
-    """Lifecycle states of a task."""
+    """Lifecycle states of a task.
 
-    DRAFT = "draft"
-    ADVERTISED = "advertised"
+    Aligned with the paper's execution flow: Pending -> Bidding ->
+    In_Progress -> Under_Verification -> Completed/Failed/Disputed.
+    """
+
+    PENDING = "pending"
+    BIDDING = "bidding"
     ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
     PAUSED = "paused"
-    AWAITING_VERIFICATION = "awaiting_verification"
+    UNDER_VERIFICATION = "under_verification"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    DISPUTED = "disputed"
     RE_DELEGATED = "re_delegated"
+
+
+class TaskCriticality(Enum):
+    """Criticality level — determines permission gating and oversight depth.
+
+    High-criticality tasks receive process-level monitoring and require
+    human escalation on failure. Low-criticality tasks use outcome-level
+    checks and support automatic re-delegation.
+    """
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
 
 
 class TaskPriority(Enum):
@@ -43,8 +61,9 @@ class VerificationCriteria:
     """Defines how a task's outcome should be verified.
 
     Attributes:
-        method: The verification approach — "direct_inspection", "third_party_audit",
-                "cryptographic_proof", or "automated_test".
+        method: The verification approach — "direct_inspection",
+                "third_party_audit", "cryptographic_zk_proof",
+                "consensus_game", or "automated_test".
         specification: A formal or semi-formal description of the expected outcome.
         acceptance_threshold: Numeric threshold for acceptance (e.g., accuracy >= 0.95).
         timeout: Maximum time allowed for verification.
@@ -85,15 +104,19 @@ class Task:
         name: Human-readable short name.
         description: Detailed description of what the task accomplishes.
         status: Current lifecycle state.
+        criticality: Determines oversight level and failure-handling policy.
+        reversible: If True, failures trigger automatic re-delegation.
+            If False, failures escalate to a human immediately.
         priority: Scheduling priority.
-        parent_id: ID of the parent task if this is a sub-task.
+        parent_id: ID of the parent task if this is a sub-task
+            (supports recursive sub-delegation chains).
         sub_task_ids: IDs of child tasks produced by decomposition.
         verification: How to verify successful completion.
         resources: Resource requirements for execution.
         input_data: Arbitrary input payload for the task.
         output_data: Arbitrary output payload upon completion.
-        delegator_id: ID of the agent or human who created/delegated the task.
-        assignee_id: ID of the agent currently assigned.
+        delegator_id: DID of the agent or human who created/delegated the task.
+        assignee_id: DID of the agent currently assigned.
         created_at: Timestamp of creation.
         updated_at: Timestamp of last status change.
         deadline: Hard deadline for completion.
@@ -104,7 +127,9 @@ class Task:
     description: str
     verification: VerificationCriteria
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    status: TaskStatus = TaskStatus.DRAFT
+    status: TaskStatus = TaskStatus.PENDING
+    criticality: TaskCriticality = TaskCriticality.MEDIUM
+    reversible: bool = True
     priority: TaskPriority = TaskPriority.MEDIUM
     parent_id: str | None = None
     sub_task_ids: list[str] = field(default_factory=list)

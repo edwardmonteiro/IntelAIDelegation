@@ -10,18 +10,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from intel_ai_delegation.contracts.protocol import ContractManager
 from intel_ai_delegation.coordination.protocol import ActionType, Coordinator
 from intel_ai_delegation.decomposition.protocol import TaskDecomposer
 from intel_ai_delegation.market.protocol import MarketHub
-from intel_ai_delegation.models.agent import Agent
 from intel_ai_delegation.models.contract import Contract
+from intel_ai_delegation.models.ledger import CompletionStatus, LedgerTransaction
 from intel_ai_delegation.models.task import Task, TaskStatus
 from intel_ai_delegation.monitoring.protocol import Monitor
 from intel_ai_delegation.permissions.protocol import PermissionManager
-from intel_ai_delegation.trust.protocol import ReputationRecord, TrustLedger
+from intel_ai_delegation.trust.protocol import TrustLedger
 from intel_ai_delegation.verification.protocol import Verifier, VerificationStatus
 
 logger = logging.getLogger(__name__)
@@ -98,7 +97,7 @@ class Delegator:
             4. Grant just-in-time permissions.
             5. Monitor execution with adaptive coordination.
             6. Verify completion.
-            7. Record reputation and revoke permissions.
+            7. Record reputation on ledger and revoke permissions.
 
         Args:
             task: The task to delegate.
@@ -141,8 +140,8 @@ class Delegator:
 
     async def _execute_leaf(self, task: Task) -> Contract | None:
         """Execute a single leaf task through the full lifecycle."""
-        # Advertise on market
-        task.status = TaskStatus.ADVERTISED
+        # Advertise on market (enter bidding phase)
+        task.status = TaskStatus.BIDDING
         await self._market.advertise_task(task)
 
         # Collect bids and select best
@@ -161,7 +160,7 @@ class Delegator:
         contract = await self._contracts.activate_contract(contract.contract_id)
         self._contract_registry[contract.contract_id] = contract
 
-        # Grant permissions
+        # Grant just-in-time permissions
         for perm in contract.permissions_granted:
             await self._permissions.grant(
                 agent_id=contract.delegatee_id,
@@ -178,31 +177,32 @@ class Delegator:
         task = await self._coordination_loop(task, contract)
 
         # Verify
-        if task.status == TaskStatus.AWAITING_VERIFICATION:
+        if task.status == TaskStatus.UNDER_VERIFICATION:
             result = await self._verifier.verify(task)
             if result.status == VerificationStatus.PASSED:
                 task.status = TaskStatus.COMPLETED
                 await self._contracts.complete_contract(contract.contract_id)
-                outcome = "success"
+                completion = CompletionStatus.SUCCESS
             else:
                 task.status = TaskStatus.FAILED
                 await self._contracts.report_breach(
                     contract.contract_id, "Verification failed"
                 )
-                outcome = "failed"
+                completion = CompletionStatus.FAILURE
 
-            # Record reputation
-            await self._trust.record(
-                ReputationRecord(
-                    agent_id=contract.delegatee_id,
+            # Record on immutable ledger
+            await self._trust.record_transaction(
+                LedgerTransaction(
                     task_id=task.task_id,
+                    delegatee_id=contract.delegatee_id,
+                    delegator_id=contract.delegator_id,
                     contract_id=contract.contract_id,
-                    outcome=outcome,
+                    completion_status=completion,
                     quality_score=result.score,
                 )
             )
 
-        # Revoke permissions
+        # Revoke all JIT permissions
         await self._permissions.revoke_all_for_task(task.task_id)
         await self._monitor.stop_monitoring(task.task_id)
 
@@ -218,7 +218,7 @@ class Delegator:
                 # Check if task reported completion
                 for event in events:
                     if event.event_type == "completed":
-                        task.status = TaskStatus.AWAITING_VERIFICATION
+                        task.status = TaskStatus.UNDER_VERIFICATION
                         break
                 else:
                     continue
@@ -230,7 +230,6 @@ class Delegator:
                 )
                 await self._permissions.revoke_all_for_task(task.task_id)
                 task.status = TaskStatus.RE_DELEGATED
-                # Re-execute will be handled by caller
                 break
 
             elif action.action_type == ActionType.CANCEL:

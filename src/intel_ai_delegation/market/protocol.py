@@ -24,10 +24,14 @@ class Bid:
     Attributes:
         bid_id: Unique identifier.
         task_id: The task being bid on.
-        agent_id: The bidding agent.
-        proposed_cost: Cost the agent proposes for the work.
-        proposed_duration_seconds: Estimated completion time in seconds.
+        agent_id: The bidding agent (DID).
+        proposed_cost: The economic or computational expense proposed.
+        proposed_duration_seconds: Proposed time-frame for execution in seconds.
         confidence: Agent's self-assessed confidence in [0, 1].
+        privacy_guarantee: Privacy mechanism offered, e.g. "tee_enclave_sgx",
+            "zk_snark", "none".
+        reputation_bond: Financial stake posted into escrow prior to execution
+            to ensure crypto-economic security.
         message: Optional free-form message from the agent.
         submitted_at: Timestamp of submission.
         metadata: Extensible key-value data.
@@ -38,6 +42,8 @@ class Bid:
     proposed_cost: float = 0.0
     proposed_duration_seconds: float = 0.0
     confidence: float = 1.0
+    privacy_guarantee: str = "none"
+    reputation_bond: float = 0.0
     message: str = ""
     bid_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     submitted_at: datetime = field(default_factory=datetime.utcnow)

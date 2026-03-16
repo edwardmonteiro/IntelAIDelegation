@@ -2,6 +2,8 @@
 
 Smart contracts pair performance requirements with verification mechanisms
 and automated penalties for breaches, ensuring accountability at every step.
+The contract terms are hashed and stored immutably to prevent retroactive
+tampering.
 """
 
 from __future__ import annotations
@@ -23,6 +25,16 @@ class ContractStatus(Enum):
     BREACHED = "breached"
     TERMINATED = "terminated"
     EXPIRED = "expired"
+
+
+class VerificationMethod(Enum):
+    """Supported verification methods for contract fulfillment."""
+
+    DIRECT_INSPECTION = "direct_inspection"
+    THIRD_PARTY_AUDIT = "third_party_audit"
+    CRYPTOGRAPHIC_ZK_PROOF = "cryptographic_zk_proof"
+    CONSENSUS_GAME = "consensus_game"
+    AUTOMATED_TEST = "automated_test"
 
 
 @dataclass
@@ -66,17 +78,23 @@ class Contract:
     """A formal agreement governing the delegation of a task.
 
     The contract binds a delegator and a delegatee to a set of terms
-    including SLAs, verification criteria, and penalties.
+    including SLAs, penalties, verification criteria, and permission grants.
+    An immutable hash of the agreed terms is stored for tamper detection.
 
     Attributes:
         contract_id: Globally unique identifier.
         task_id: The task this contract governs.
-        delegator_id: ID of the delegating entity.
-        delegatee_id: ID of the entity accepting the work.
+        bid_id: The accepted bid that created this contract.
+        delegator_id: DID of the delegating entity.
+        delegatee_id: DID of the entity accepting the work.
         status: Current lifecycle state.
+        verification_method: How task completion is verified.
+        monitoring_cadence: Frequency of progress reports negotiated
+            prior to execution (e.g., "every_5m", "on_checkpoint", "on_completion").
+        contract_terms_hash: Immutable hash of the exact terms agreed upon,
+            used to detect any retroactive tampering.
         sla: Service-level agreement terms.
         penalties: Penalties that apply upon breach.
-        verification_method: How task completion is verified.
         permissions_granted: Scoped permissions the delegatee receives.
         created_at: When the contract was created.
         activated_at: When the contract became active.
@@ -87,11 +105,14 @@ class Contract:
     task_id: str
     delegator_id: str
     delegatee_id: str
+    bid_id: str = ""
     contract_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     status: ContractStatus = ContractStatus.PROPOSED
+    verification_method: VerificationMethod = VerificationMethod.DIRECT_INSPECTION
+    monitoring_cadence: str = "on_completion"
+    contract_terms_hash: str = ""
     sla: ServiceLevelAgreement = field(default_factory=ServiceLevelAgreement)
     penalties: list[Penalty] = field(default_factory=list)
-    verification_method: str = "direct_inspection"
     permissions_granted: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.utcnow)
     activated_at: datetime | None = None
