@@ -8,6 +8,7 @@
  *   /api/v1/decompose/*     → Task Decomposition Engine
  *   /api/v1/market/*        → Decentralized Market Hub
  *   /api/v1/contracts/*     → Smart Contract Lifecycle
+ *   /api/v1/openclaw/*      → OpenClaw Gateway Adapter
  *   /api/v1/resources/*     → Permission-gated mock resource (demo)
  */
 
@@ -15,6 +16,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import { decomposeRouter } from "./routes/decompose.routes";
 import { marketRouter } from "./routes/market.routes";
 import { contractRouter } from "./routes/contract.routes";
+import { openclawRouter } from "./adapters/openclaw-gateway";
 import {
   requirePermission,
   type AuthenticatedRequest,
@@ -55,6 +57,9 @@ app.use("/api/v1/market", marketRouter);
 
 // Smart Contract Lifecycle
 app.use("/api/v1/contracts", contractRouter);
+
+// OpenClaw Gateway Adapter
+app.use("/api/v1/openclaw", openclawRouter);
 
 // ---------------------------------------------------------------------------
 // Permission-Gated Resource (demo endpoint)
@@ -153,6 +158,12 @@ if (require.main === module) {
   │    POST /api/v1/contracts/:id/breach            │
   │    POST /api/v1/contracts/:id/terminate         │
   │    GET  /api/v1/contracts/:id/verify            │
+  │    POST /api/v1/openclaw/register                │
+  │    GET  /api/v1/openclaw/agents/:id/tasks       │
+  │    POST /api/v1/openclaw/agents/:id/bid         │
+  │    POST /api/v1/openclaw/permissions/check       │
+  │    POST /api/v1/openclaw/transcript/:taskId      │
+  │    GET  /api/v1/openclaw/transparency/:taskId    │
   │    GET  /api/v1/resources/:taskId (gated)       │
   │    GET  /health                                 │
   └─────────────────────────────────────────────────┘
