@@ -9,6 +9,7 @@
  *   /api/v1/market/*        → Decentralized Market Hub
  *   /api/v1/contracts/*     → Smart Contract Lifecycle
  *   /api/v1/openclaw/*      → OpenClaw Gateway Adapter
+ *   /api/v1/enterprise/*    → Enterprise (RBAC, Audit, Org, Metering, Analytics)
  *   /api/v1/resources/*     → Permission-gated mock resource (demo)
  */
 
@@ -17,6 +18,7 @@ import { decomposeRouter } from "./routes/decompose.routes";
 import { marketRouter } from "./routes/market.routes";
 import { contractRouter } from "./routes/contract.routes";
 import { openclawRouter } from "./adapters/openclaw-gateway";
+import { enterpriseRouter } from "./routes/enterprise.routes";
 import {
   requirePermission,
   type AuthenticatedRequest,
@@ -60,6 +62,9 @@ app.use("/api/v1/contracts", contractRouter);
 
 // OpenClaw Gateway Adapter
 app.use("/api/v1/openclaw", openclawRouter);
+
+// Enterprise Features (RBAC, Audit, Org, Metering, Analytics)
+app.use("/api/v1/enterprise", enterpriseRouter);
 
 // ---------------------------------------------------------------------------
 // Permission-Gated Resource (demo endpoint)
@@ -165,6 +170,19 @@ if (require.main === module) {
   │    POST /api/v1/openclaw/transcript/:taskId      │
   │    GET  /api/v1/openclaw/transparency/:taskId    │
   │    GET  /api/v1/resources/:taskId (gated)       │
+  │                                                 │
+  │  Enterprise:                                    │
+  │    POST /api/v1/enterprise/rbac/check           │
+  │    POST /api/v1/enterprise/rbac/roles           │
+  │    POST /api/v1/enterprise/rbac/bindings        │
+  │    POST /api/v1/enterprise/rbac/policies        │
+  │    GET  /api/v1/enterprise/audit                │
+  │    POST /api/v1/enterprise/audit/verify         │
+  │    POST /api/v1/enterprise/orgs                 │
+  │    POST /api/v1/enterprise/metering/usage       │
+  │    POST /api/v1/enterprise/metering/quotas      │
+  │    POST /api/v1/enterprise/analytics/trend      │
+  │    POST /api/v1/enterprise/analytics/risk       │
   │    GET  /health                                 │
   └─────────────────────────────────────────────────┘
     `);
