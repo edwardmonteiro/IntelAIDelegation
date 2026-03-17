@@ -1,0 +1,368 @@
+// ============================================================================
+// Prisma Schema — Intelligent AI Delegation Framework
+// ============================================================================
+// This schema mirrors the Python domain models and SQL schema (tables.sql)
+// with full relational integrity. Designed for PostgreSQL with UUID primary
+// keys and JSONB for extensible metadata.
+//
+// Tables map 1:1 to the paper's architecture:
+//   Agent             → Delegators, Delegatees, Verifiers (DID identity)
+//   VerifiableCredential → Web-of-Trust endorsement portfolio
+//   Task              → Recursive execution graph
+//   Bid               → Market proposals with privacy & escrow
+//   SmartContract     → Binding agreements with SLA & penalties
+//   LedgerTransaction → Immutable multi-dimensional reputation history
+//   PermissionGrant   → Just-in-time scoped access
+//   MonitoringEvent   → Telemetry during task execution
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums — aligned with Python model enums
+// ---------------------------------------------------------------------------
+
+enum AgentType {
+  AI
+  HUMAN
+  HYBRID
+}
+
+enum TaskStatus {
+  PENDING
+  BIDDING
+  ASSIGNED
+  IN_PROGRESS
+  PAUSED
+  UNDER_VERIFICATION
+  COMPLETED
+  FAILED
+  CANCELLED
+  DISPUTED
+  RE_DELEGATED
+}
+
+enum TaskCriticality {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum VerificationMethod {
+  DIRECT_INSPECTION
+  THIRD_PARTY_AUDIT
+  CRYPTOGRAPHIC_ZK_PROOF
+  CONSENSUS_GAME
+  AUTOMATED_TEST
+}
+
+enum ContractStatus {
+  PROPOSED
+  ACCEPTED
+  ACTIVE
+  COMPLETED
+  BREACHED
+  TERMINATED
+  EXPIRED
+}
+
+enum CompletionStatus {
+  SUCCESS
+  FAILURE
+  PARTIAL
+}
+
+enum EventSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum PenaltySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ---------------------------------------------------------------------------
+// 1. Agent — Identified by Decentralized Identifiers (DIDs)
+// ---------------------------------------------------------------------------
+
+model Agent {
+  id                   String   @id                          // DID, e.g. "did:web:agent-name"
+  name                 String
+  type                 AgentType
+  publicKey            String   @default("")
+  baseReputationScore  Float    @default(0.5)
+  activeStatus         Boolean  @default(true)
+  maxConcurrentTasks   Int      @default(1)
+  registeredAt         DateTime @default(now())
+  metadata             Json     @default("{}")
+
+  // -- Relations --
+  credentialsReceived  VerifiableCredential[] @relation("CredentialHolder")
+  credentialsIssued    VerifiableCredential[] @relation("CredentialIssuer")
+  delegatedTasks       Task[]                 @relation("TaskDelegator")
+  assignedTasks        Task[]                 @relation("TaskAssignee")
+  bids                 Bid[]
+  contractsAsDelegator SmartContract[]        @relation("ContractDelegator")
+  contractsAsDelegatee SmartContract[]        @relation("ContractDelegatee")
+  ledgerEntries        LedgerTransaction[]    @relation("LedgerDelegatee")
+  ledgerAsReporter     LedgerTransaction[]    @relation("LedgerDelegator")
+  permissionGrants     PermissionGrant[]
+
+  @@index([type])
+  @@index([activeStatus])
+  @@index([baseReputationScore(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// 2. Verifiable Credential — Domain-specific endorsement portfolio
+// ---------------------------------------------------------------------------
+
+model VerifiableCredential {
+  id              String    @id @default(uuid())
+  agentId         String
+  issuerId        String
+  skillDomain     String                                   // e.g. "legal_translation"
+  credentialHash  String    @default("")                   // SHA-256 of signed payload
+  issuedAt        DateTime  @default(now())
+  expiresAt       DateTime?
+  revoked         Boolean   @default(false)
+  evidence        Json      @default("{}")
+  metadata        Json      @default("{}")
+
+  // -- Relations --
+  agent           Agent     @relation("CredentialHolder", fields: [agentId], references: [id])
+  issuer          Agent     @relation("CredentialIssuer", fields: [issuerId], references: [id])
+
+  @@index([agentId])
+  @@index([issuerId])
+  @@index([skillDomain])
+  @@index([agentId, revoked])
+}
+
+// ---------------------------------------------------------------------------
+// 3. Task — Recursive execution graph with criticality & reversibility
+// ---------------------------------------------------------------------------
+
+model Task {
+  id                   String           @id @default(uuid())
+  name                 String
+  description          String           @default("")
+  objective            String           @default("")       // High-level goal
+  status               TaskStatus       @default(PENDING)
+  criticality          TaskCriticality  @default(MEDIUM)
+  reversible           Boolean          @default(true)
+  priority             TaskPriority     @default(MEDIUM)
+  verificationMethod   String           @default("direct_inspection")
+  verificationSpec     String           @default("")
+  acceptanceThreshold  Float            @default(1.0)
+  inputData            Json             @default("{}")
+  outputData           Json             @default("{}")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  deadline             DateTime?
+  metadata             Json             @default("{}")
+
+  // -- Self-relation for sub-delegation chains --
+  parentTaskId         String?
+  parentTask           Task?            @relation("TaskTree", fields: [parentTaskId], references: [id])
+  subTasks             Task[]           @relation("TaskTree")
+
+  // -- Agent relations --
+  delegatorId          String?
+  delegator            Agent?           @relation("TaskDelegator", fields: [delegatorId], references: [id])
+  assigneeId           String?
+  assignee             Agent?           @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  // -- Downstream relations --
+  bids                 Bid[]
+  contracts            SmartContract[]
+  ledgerTransactions   LedgerTransaction[]
+  permissionGrants     PermissionGrant[]
+  monitoringEvents     MonitoringEvent[]
+
+  @@index([parentTaskId])
+  @@index([delegatorId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([criticality])
+}
+
+// ---------------------------------------------------------------------------
+// 4. Bid — Market proposals with privacy guarantees & reputation bonds
+// ---------------------------------------------------------------------------
+
+model Bid {
+  id                       String   @id @default(uuid())
+  taskId                   String
+  agentId                  String
+  proposedCost             Float    @default(0)
+  proposedDurationSeconds  Float    @default(0)
+  confidence               Float    @default(1.0)
+  privacyGuarantee         String   @default("none")      // "tee_enclave_sgx", "zk_snark"
+  reputationBond           Float    @default(0)
+  message                  String   @default("")
+  submittedAt              DateTime @default(now())
+  metadata                 Json     @default("{}")
+
+  // -- Relations --
+  task                     Task     @relation(fields: [taskId], references: [id])
+  agent                    Agent    @relation(fields: [agentId], references: [id])
+  contracts                SmartContract[]
+
+  @@index([taskId])
+  @@index([agentId])
+}
+
+// ---------------------------------------------------------------------------
+// 5. SmartContract — Binding agreement with SLA, monitoring, & terms hash
+// ---------------------------------------------------------------------------
+
+model SmartContract {
+  id                     String             @id @default(uuid())
+  taskId                 String
+  bidId                  String
+  delegatorId            String
+  delegateeId            String
+  status                 ContractStatus     @default(PROPOSED)
+  verificationMethod     VerificationMethod @default(DIRECT_INSPECTION)
+  monitoringCadence      String             @default("on_completion")
+  contractTermsHash      String             @default("")
+  slaMaxDurationSeconds  Float?
+  slaMinQualityScore     Float?             @default(0.0)
+  slaMaxCost             Float?
+  permissionsGranted     String[]           @default([])
+  createdAt              DateTime           @default(now())
+  activatedAt            DateTime?
+  completedAt            DateTime?
+  metadata               Json               @default("{}")
+
+  // -- Relations --
+  task                   Task               @relation(fields: [taskId], references: [id])
+  bid                    Bid                @relation(fields: [bidId], references: [id])
+  delegator              Agent              @relation("ContractDelegator", fields: [delegatorId], references: [id])
+  delegatee              Agent              @relation("ContractDelegatee", fields: [delegateeId], references: [id])
+  ledgerTransactions     LedgerTransaction[]
+  penalties              ContractPenalty[]
+  permissionGrants       PermissionGrant[]
+  monitoringEvents       MonitoringEvent[]
+
+  @@index([taskId])
+  @@index([delegatorId])
+  @@index([delegateeId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// 6. LedgerTransaction — Immutable multi-dimensional reputation history
+// ---------------------------------------------------------------------------
+
+model LedgerTransaction {
+  id                    String           @id @default(uuid())
+  taskId                String
+  delegateeId           String
+  delegatorId           String?
+  contractId            String?
+  completionStatus      CompletionStatus
+  qualityScore          Float            @default(1.0)
+  transparencyScore     Float            @default(1.0)
+  safetyScore           Float            @default(1.0)
+  resourceConsumed      Json             @default("{}")    // e.g. {"gpu_hours": 2.5}
+  verificationProofHash String           @default("")
+  recordedAt            DateTime         @default(now())
+  metadata              Json             @default("{}")
+
+  // -- Relations --
+  task                  Task             @relation(fields: [taskId], references: [id])
+  delegatee             Agent            @relation("LedgerDelegatee", fields: [delegateeId], references: [id])
+  delegator             Agent?           @relation("LedgerDelegator", fields: [delegatorId], references: [id])
+  contract              SmartContract?   @relation(fields: [contractId], references: [id])
+
+  @@index([taskId])
+  @@index([delegateeId])
+  @@index([completionStatus])
+  @@index([recordedAt(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// 7. ContractPenalty — Penalty events triggered during execution
+// ---------------------------------------------------------------------------
+
+model ContractPenalty {
+  id               String          @id @default(uuid())
+  contractId       String
+  condition        String
+  severity         PenaltySeverity @default(MEDIUM)
+  reputationImpact Float           @default(0)
+  description      String          @default("")
+  triggeredAt      DateTime        @default(now())
+
+  contract         SmartContract   @relation(fields: [contractId], references: [id])
+
+  @@index([contractId])
+}
+
+// ---------------------------------------------------------------------------
+// 8. PermissionGrant — Just-in-time scoped access
+// ---------------------------------------------------------------------------
+
+model PermissionGrant {
+  id          String         @id @default(uuid())
+  agentId     String
+  taskId      String
+  contractId  String?
+  scope       String                                       // e.g. "api:read:users"
+  resource    String         @default("*")
+  grantedAt   DateTime       @default(now())
+  expiresAt   DateTime?
+  revoked     Boolean        @default(false)
+  metadata    Json           @default("{}")
+
+  agent       Agent          @relation(fields: [agentId], references: [id])
+  task        Task           @relation(fields: [taskId], references: [id])
+  contract    SmartContract? @relation(fields: [contractId], references: [id])
+
+  @@index([agentId])
+  @@index([taskId])
+  @@index([agentId, revoked])
+}
+
+// ---------------------------------------------------------------------------
+// 9. MonitoringEvent — Telemetry and health checks
+// ---------------------------------------------------------------------------
+
+model MonitoringEvent {
+  id          String         @id @default(uuid())
+  taskId      String
+  contractId  String?
+  eventType   String                                       // "progress", "health_check"
+  severity    EventSeverity  @default(INFO)
+  message     String         @default("")
+  data        Json           @default("{}")
+  timestamp   DateTime       @default(now())
+
+  task        Task           @relation(fields: [taskId], references: [id])
+  contract    SmartContract? @relation(fields: [contractId], references: [id])
+
+  @@index([taskId])
+  @@index([timestamp(sort: Desc)])
+  @@index([severity])
+}
