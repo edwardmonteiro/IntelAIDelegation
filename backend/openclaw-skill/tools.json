@@ -1,0 +1,118 @@
+[
+  {
+    "name": "delegation_discover_tasks",
+    "description": "Discover tasks available for bidding that match your registered skills and credentials. Returns tasks in PENDING or BIDDING status that you haven't already bid on.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "Maximum number of tasks to return (default: 10)",
+          "default": 10
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "delegation_submit_bid",
+    "description": "Submit a bid for a task in the delegation marketplace. Your bid includes proposed cost, duration, confidence level, and optional privacy guarantees. A reputation bond is automatically calculated based on your current reputation score.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "description": "UUID of the task to bid on"
+        },
+        "estimatedCost": {
+          "type": "number",
+          "description": "Your proposed cost in abstract cost units"
+        },
+        "estimatedDurationSeconds": {
+          "type": "number",
+          "description": "Your estimated completion time in seconds"
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Your confidence level (0.0 to 1.0)",
+          "default": 0.8
+        },
+        "privacyGuarantee": {
+          "type": "string",
+          "enum": ["none", "tee_enclave_sgx", "zk_snark"],
+          "description": "Privacy mechanism you can provide",
+          "default": "none"
+        }
+      },
+      "required": ["taskId", "estimatedCost", "estimatedDurationSeconds"]
+    }
+  },
+  {
+    "name": "delegation_check_permission",
+    "description": "Check whether you are authorized to invoke a specific tool for your current task. This enforces the Just-in-Time permission model — your contract must grant access to the tool's scope. Always call this BEFORE invoking sensitive tools during delegated task execution.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "description": "UUID of the task you're executing"
+        },
+        "toolName": {
+          "type": "string",
+          "description": "Name of the tool you want to invoke"
+        }
+      },
+      "required": ["taskId", "toolName"]
+    }
+  },
+  {
+    "name": "delegation_report_progress",
+    "description": "Report progress on your current task. Send periodic updates to maintain transparency scores. Include a progress percentage and a message describing what you've accomplished.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "description": "UUID of the task you're executing"
+        },
+        "progress": {
+          "type": "number",
+          "description": "Completion percentage (0.0 to 1.0)"
+        },
+        "message": {
+          "type": "string",
+          "description": "Description of current progress and next steps"
+        }
+      },
+      "required": ["taskId", "progress", "message"]
+    }
+  },
+  {
+    "name": "delegation_complete_task",
+    "description": "Signal that you have completed your assigned task. Provide the output data and any verification artifacts. The task will enter UNDER_VERIFICATION status and your work will be evaluated for quality, transparency, and safety scoring.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "description": "UUID of the task you've completed"
+        },
+        "outputData": {
+          "type": "object",
+          "description": "The deliverable output of your work"
+        },
+        "verificationArtifacts": {
+          "type": "object",
+          "description": "Any proofs, test results, or artifacts that support verification",
+          "default": {}
+        },
+        "resourceConsumed": {
+          "type": "object",
+          "description": "Resources consumed (e.g., {\"api_tokens\": 5000, \"duration_seconds\": 120})",
+          "default": {}
+        }
+      },
+      "required": ["taskId", "outputData"]
+    }
+  }
+]
